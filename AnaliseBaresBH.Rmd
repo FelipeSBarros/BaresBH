@@ -1,0 +1,123 @@
+---
+title: "Analise de Kernel no R"
+author: "Felipe Sodré Mendes Barros"
+date: "July 28, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+```
+
+## Análise de Kernel no R
+Nesse tutorial vamos não apenas realizar a análise de Kernel, como vamos ver como estimar a largura do raio de suavização da função Kernel de forma estatística e segundo diferentes abordagens.
+
+Para isso vamos usar os seguinte pacotes:  
+
+* [rgdal](https://www.rdocumentation.org/packages/rgdal/versions/1.3-3)  
+* [spatstat](http://spatstat.org/)  
+```{r pacotes}
+# Instalando pacoates ----
+# install.packages("rgdal". depencies = TRUE)
+# install.packages("spatstat", dependencies = TRUE)
+
+# Carregando os pacotes ----
+library(rgdal)
+library(spatstat)
+```
+
+### Carregando dados
+Os dados que vamos usarsão as localizações de bares de Belo Horizonte. Dizem que BH é a cidade com maior concentração de bares. Mesmo sem termos certeza disso, baixamos os bares mapeados no [Open Street Map](https://wikipedia.org/wiki/OpenStreetMap) para, usando o Kernel, vermos como esses estão distribuidos pela cidade.
+```{r carregandoDados}
+# Carregando os dados
+BaresBH <- readOGR("./Dados/BaresBH.geojson", "BaresBH")
+plot(BaresBH, axes = TRUE)
+BaresBH@proj4string
+```
+
+### Convertendo para PPP
+Há varios pacotes que nos permitem estimar e realizar a análise de Kernel. Para este exemplo, vamos usar o pacote **patstat**. Esse pacto trabalha preferencialmente com objetos no formato *ppp*. Por isso, antes de realizarmos o Kernel, vamos converter o dado espacial carregado para o padrão *ppp*:
+Para a conversão vamos indicar a coluna de *longitude*, *latitude* do objeto espacial carregado (BaresBH), além de indicarmos a área de estudo, no parâmetro *window* (que foi definido como o retangulo que contem todas as ocorrências de bares mapeados em BH).
+Para mais informaçãoes, não deixem de pesqsuisar sobre a função ppp [?ppp](https://www.rdocumentation.org/packages/spatstat/versions/1.55-1/topics/ppp);
+```{r pppTransform}
+# Convertendo os dados para PPP ----
+bares_ppp <- ppp(BaresBH@coords[,1], BaresBH@coords[,2], window = as.owin(c(bbox(BaresBH)[1,], bbox(BaresBH)[2,])))
+plot(bares_ppp)
+# ?ppp
+```
+
+### Análise de Kernel
+Agora que já temos nossos dados no padrão *ppp*, vamos usar a função [*density.ppp*](https://www.rdocumentation.org/packages/spatstat/versions/1.55-1/topics/density.ppp) para realizar a análise de Kernel. Com é de amplo conhecimento, o principal parâmetro do estimador Kernel é o raio de suavização (*band width*). Esse valor deve ser informado pelo parâmetro *sigma* da função *density.ppp* pois **não há um valor definido por padrão**.
+Começaremos definindo um valor arbitrário (sigma = 0.01), só para exemplificar.
+```{r arbitrario}
+# ?density.ppp
+BAresKernel <- density.ppp(bares_ppp, sigma = 0.01)
+plot(BAresKernel)
+```
+
+Mas a grande questão é de fato, como definir o valor de *sigma*. E o bacna é que, lendo a documentação da função *density.ppp*, vemos que o pacto *spatstat* apresenta algumas funções estatísticas para identificar esse valor segundo diferentes abordagens.
+Uma delas é o [*bw.diggle*](https://www.rdocumentation.org/packages/spatstat/versions/1.55-1/topics/bw.diggle)
+```{r bwdiggle}
+# Usando bw.diggle
+bw.diggle(bares_ppp)
+```
+
+Vejam que a função acima retorna um valor que é o valor do rio de suavização de kernel segundo a abordagem proposta por diggle. 
+**Não entraremos a fundo a respeito dessas abordagens. Cabe a cada um ler a documentação e os artigos relacionados e entender até que ponto essa abordagem lhe é conveniente.**
+Assim, podemos substituir o valor arbitrário informado antes pela função, conforme apresentado a seguir:
+```{r bw.diggleKernel}
+BAresKernel <- density.ppp(bares_ppp, sigma = bw.diggle(bares_ppp))
+plot(BAresKernel)
+```
+
+Vemos que o valor estabelecido pela abordagem de diggle é bem ajustado à ocorrências dos pontos. Para comparar vamos ver uma outra abordagem na definição do raio, que é a proposta por Scott, através da função [bw.scott](https://www.rdocumentation.org/packages/spatstat/versions/1.55-1/topics/bw.scott). Tal função retorno dois valores... Não não ter que escolher u em detrimento de outro, usarei a média deles.
+Mais uma vez, fica a cargo de cada um definir a abordagem estatística mais coerente ao seu estudo.
+```{r bwScottkernel}
+# Usando bw.scott
+mean(bw.scott(bares_ppp))
+BAresKernel <- density.ppp(bares_ppp, sigma = mean(bw.scott(bares_ppp)))
+plot(BAresKernel)
+```
+
+### Efeito de borda
+Um elemento pouco falado sobre o estimador Kernel é o efeito de borda que pode existir pelo fato de termos amostras para uma determinada área de estudo e, pelo fato de não termos amostrado os fenômenos estudados para além dessa aŕea, sempre haverá um efeito nas bordas. A esse efeito é dado o nome de *efeito de borda* (tradução livre de *edge effects* - não confundir com o conceito de efeito de borda usado na ecologia).
+O interessante é que no pacto *spatstats* temos parâmetros para cuidar desse potencial efeito de borda. Trata-se dos parâmetros *edge* (que define se deve-se tratar o efeito de borda) e *diggle* (que define se deve-se suar a metodologia de diggle para cuidar do efeito de borda)
+Pode ser que para o presente exemplo não haja uma diferença significativa, mas fica o alerta a respeito disso.
+```{r edgeEffects}
+# Efeito de borda
+?density.ppp
+BAresKernel <- density.ppp(bares_ppp, sigma = bw.diggle(bares_ppp), edge = TRUE, diggle = TRUE)
+plot(BAresKernel)
+```
+
+### Mapa dinâmico
+Para tornar mais interessante o resultado, podemos usar o pacote [*mapview*](https://www.rdocumentation.org/packages/mapview/versions/2.4.0) para gerar um mapa dinâmico do resultado. Para isso vamos instalar o pacote e carregá-lo. Assim como o pacote [*raster*](https://www.rdocumentation.org/packages/raster/versions/2.6-7), pois precisaremos converter o kernel (que está em formato de imagem) para o formato de raster:
+```{r mapadinamico}
+# isntalando os pacotes
+# install.packages(mapview)
+# install.packages(raster)
+
+# carregando os pacotes
+library(mapview)
+library(raster)
+
+# convertendo o resultado kernel para raster
+BAresKernel <- raster(BAresKernel)
+
+# informando o Sistema de Referencia Cartografico
+crs(BAresKernel) <- crs(BaresBH)
+
+# gernado o mapa dinâmico
+mapview(BAresKernel, map.types = "OpenStreetMap")
+```
+
+### Salvando Kernel em TIF
+Bom, acho que por último, podemos salvar nosso resultado em raster. Para isso, usaremos a função *[writeRaster*](https://www.rdocumentation.org/packages/raster/versions/2.6-7/topics/writeRaster) do pacote *raster*:
+```{r salvandoRaster, eval = FALSE}
+# Salvando resultado em raster
+writeRaster(BAresKernel, "BaresKernel.tif")
+```
+  
+Não deixe de ler as referências bibliográficas para certificar-se que o que está fazendo é coerente com seu objeto de estudo e sua proposta metodológica...  
+
+  
