@@ -6,6 +6,7 @@
 
 Nesse tutorial vamos não apenas realizar a análise de Kernel, como vamos ver como estimar a largura do raio de suavização da função Kernel de forma estatística e segundo diferentes abordagens.  
 [Link para tutorial](https://felipesbarros.github.io/BaresBH/AnaliseBaresBH.html)
+[Link para video youtube](https://youtu.be/uM9GKO100qg)  
 
 **Elaborado por: Felipe Sodré Mendes Barros**  
 
